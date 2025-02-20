@@ -3,6 +3,7 @@ import requests
 import time
 from datetime import datetime
 from telegram import Bot
+import asyncio
 import os
 
 class CryptoAlert:
@@ -14,11 +15,11 @@ class CryptoAlert:
         self.last_alert_times = {}
         
     def get_candlestick_data(self, symbol):
-        url = f"https://min-api.cryptocompare.com/data/v2/histominute"  # histohour에서 histominute로 변경
+        url = f"https://min-api.cryptocompare.com/data/v2/histominute"
         params = {
             "fsym": symbol,
             "tsym": "USD",
-            "limit": 5,  # 최근 5개 캔들만 가져옴
+            "limit": 5,
             "api_key": self.crypto_api_key
         }
         
@@ -32,14 +33,13 @@ class CryptoAlert:
         else:
             raise Exception(f"API 요청 실패: {data['Message']}")
 
-    def check_pattern(self, symbol):
+    async def check_pattern(self, symbol):
         df = self.get_candlestick_data(symbol)
         
         last_three = df.tail(3)
         if all(last_three['close'] < last_three['open']):
             current_time = datetime.now()
             
-            # 마지막 알림으로부터 1분 이상 지났는지 확인
             if (symbol not in self.last_alert_times or 
                 (current_time - self.last_alert_times[symbol]).total_seconds() > 60):
                 
@@ -54,15 +54,15 @@ class CryptoAlert:
                     f"하락률: {drop_percent:.2f}%"
                 )
                 
-                self.bot.send_message(chat_id=self.chat_id, text=message)
+                await self.bot.send_message(chat_id=self.chat_id, text=message)
                 self.last_alert_times[symbol] = current_time
                 print(f"알림 전송 완료: {symbol}")
 
-    def run(self):
+    async def run(self):
         symbols = ['BTC', 'ETH', 'XRP']
         
         print("암호화폐 패턴 감시를 시작합니다...")
-        self.bot.send_message(
+        await self.bot.send_message(
             chat_id=self.chat_id, 
             text="🤖 암호화폐 패턴 감시를 시작합니다!\n모니터링 중: BTC, ETH, XRP"
         )
@@ -70,12 +70,12 @@ class CryptoAlert:
         while True:
             try:
                 for symbol in symbols:
-                    self.check_pattern(symbol)
-                time.sleep(10)  # 10초마다 체크
+                    await self.check_pattern(symbol)
+                await asyncio.sleep(10)
             except Exception as e:
                 print(f"오류 발생: {str(e)}")
-                time.sleep(10)
+                await asyncio.sleep(10)
 
 if __name__ == "__main__":
     alert_bot = CryptoAlert()
-    alert_bot.run()
+    asyncio.run(alert_bot.run())
