@@ -14,13 +14,12 @@ class CryptoAlert:
         self.last_alert_times = {}
         
     def get_candlestick_data(self, symbol):
-        url = f"https://min-api.cryptocompare.com/data/v2/histohour"
+        url = f"https://min-api.cryptocompare.com/data/v2/histominute"  # histohour에서 histominute로 변경
         params = {
             "fsym": symbol,
             "tsym": "USD",
-            "limit": 5,
-            "api_key": self.crypto_api_key,
-            "aggregate": 4
+            "limit": 5,  # 최근 5개 캔들만 가져옴
+            "api_key": self.crypto_api_key
         }
         
         response = requests.get(url, params=params)
@@ -40,14 +39,19 @@ class CryptoAlert:
         if all(last_three['close'] < last_three['open']):
             current_time = datetime.now()
             
+            # 마지막 알림으로부터 1분 이상 지났는지 확인
             if (symbol not in self.last_alert_times or 
-                (current_time - self.last_alert_times[symbol]).total_seconds() > 14400):
+                (current_time - self.last_alert_times[symbol]).total_seconds() > 60):
                 
                 entry_price = last_three.iloc[-1]['close']
+                drop_percent = ((last_three.iloc[0]['open'] - last_three.iloc[-1]['close']) 
+                              / last_three.iloc[0]['open'] * 100)
+                
                 message = (
                     f"🚨 {symbol} 3연속 하락 패턴 발견! 🚨\n"
                     f"시간: {current_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                    f"현재 가격: ${entry_price:,.2f}"
+                    f"현재 가격: ${entry_price:,.2f}\n"
+                    f"하락률: {drop_percent:.2f}%"
                 )
                 
                 self.bot.send_message(chat_id=self.chat_id, text=message)
@@ -67,10 +71,10 @@ class CryptoAlert:
             try:
                 for symbol in symbols:
                     self.check_pattern(symbol)
-                time.sleep(60)
+                time.sleep(10)  # 10초마다 체크
             except Exception as e:
                 print(f"오류 발생: {str(e)}")
-                time.sleep(60)
+                time.sleep(10)
 
 if __name__ == "__main__":
     alert_bot = CryptoAlert()
