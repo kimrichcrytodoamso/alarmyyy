@@ -13,7 +13,7 @@ class CryptoAlert:
         self.chat_id = os.environ.get('CHAT_ID')
         self.bot = Bot(token=self.telegram_token)
         self.last_alert_times = {}
-        self.pre_candle_alerts = {}  # 캔들 시작 전 알림을 위한 추적
+        self.pre_candle_alerts = {}
         
     def get_candlestick_data(self, symbol, timeframe):
         url = f"https://min-api.cryptocompare.com/data/v2/histohour"
@@ -53,12 +53,12 @@ class CryptoAlert:
         timeframe_str = f"{timeframe}시간"
         alert_key = f"{symbol}_{timeframe}"
         
-        # 3연속 하락 패턴 체크
+        # 3연속 하락 패턴 체크 (발생 즉시 + 2시간 간격)
         last_three = df.tail(3)
         if all(last_three['close'] < last_three['open']):
             current_time = datetime.now()
             if (alert_key not in self.last_alert_times or 
-                (current_time - self.last_alert_times[alert_key]).total_seconds() > 10800):
+                (current_time - self.last_alert_times[alert_key]).total_seconds() > 7200):
                 
                 entry_price = last_three.iloc[-1]['close']
                 drop_percent = ((last_three.iloc[0]['open'] - last_three.iloc[-1]['close']) 
@@ -82,12 +82,31 @@ class CryptoAlert:
             current_time = datetime.now()
             time_to_next = (next_candle_time - current_time).total_seconds() / 60  # 분 단위
 
-            pre_alert_key = f"pre_{symbol}_{timeframe}"
+            pre_alert_key_5min = f"pre_5min_{symbol}_{timeframe}"
+            pre_alert_key_1hour = f"pre_1hour_{symbol}_{timeframe}"
             
-            # 다음 캔들 시작 5분 전이고 아직 알림을 보내지 않았다면
+            # 1시간 전 알림
+            if (59.5 <= time_to_next <= 60.5 and 
+                (pre_alert_key_1hour not in self.pre_candle_alerts or 
+                 self.pre_candle_alerts[pre_alert_key_1hour] != next_candle_time)):
+                
+                entry_price = last_two.iloc[-1]['close']
+                message = (
+                    f"⚠️ {symbol} {timeframe_str}봉 주의! ⚠️\n"
+                    f"2연속 하락 발생, 다음 캔들 시작 1시간 전\n"
+                    f"현재 시간: {current_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    f"다음 캔들 시작: {next_candle_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    f"현재 가격: ${entry_price:,.2f}\n"
+                    f"타임프레임: {timeframe_str}"
+                )
+                
+                await self.bot.send_message(chat_id=self.chat_id, text=message)
+                self.pre_candle_alerts[pre_alert_key_1hour] = next_candle_time
+            
+            # 5분 전 알림
             if (4.5 <= time_to_next <= 5.5 and 
-                (pre_alert_key not in self.pre_candle_alerts or 
-                 self.pre_candle_alerts[pre_alert_key] != next_candle_time)):
+                (pre_alert_key_5min not in self.pre_candle_alerts or 
+                 self.pre_candle_alerts[pre_alert_key_5min] != next_candle_time)):
                 
                 entry_price = last_two.iloc[-1]['close']
                 message = (
@@ -100,7 +119,7 @@ class CryptoAlert:
                 )
                 
                 await self.bot.send_message(chat_id=self.chat_id, text=message)
-                self.pre_candle_alerts[pre_alert_key] = next_candle_time
+                self.pre_candle_alerts[pre_alert_key_5min] = next_candle_time
 
     async def run(self):
         symbols = ['BTC', 'ETH', 'XRP']
@@ -113,8 +132,9 @@ class CryptoAlert:
             "모니터링 중: BTC, ETH, XRP\n"
             "타임프레임: 2시간봉, 4시간봉\n"
             "알림 유형:\n"
-            "1. 3연속 하락 패턴 (3시간 간격)\n"
-            "2. 2연속 하락 후 다음 캔들 5분 전 알림"
+            "1. 3연속 하락 패턴 (발생 즉시 + 2시간 간격)\n"
+            "2. 2연속 하락 후 다음 캔들 1시간 전 알림\n"
+            "3. 2연속 하락 후 다음 캔들 5분 전 알림"
         )
         
         while True:
