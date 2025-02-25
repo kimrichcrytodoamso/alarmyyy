@@ -14,6 +14,7 @@ class CryptoAlert:
         self.bot = Bot(token=self.telegram_token)
         self.last_alert_times = {}
         self.pre_candle_alerts = {}
+        self.error_wait_time = 0  # 에러 발생 시 대기 시간 추적
         
     def get_candlestick_data(self, symbol, timeframe):
         url = f"https://min-api.cryptocompare.com/data/v2/histohour"
@@ -78,6 +79,8 @@ class CryptoAlert:
                         
                         await self.bot.send_message(chat_id=self.chat_id, text=message)
                         self.last_alert_times[alert_key] = current_time
+                        # 성공적인 요청 후 대기 시간 초기화
+                        self.error_wait_time = 0
 
             # 2연속 하락 후 다음 캔들 종료 전 알림 체크
             last_two = df.tail(2)
@@ -119,40 +122,3 @@ class CryptoAlert:
                         f"현재 시간: {current_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
                         f"다음 캔들 종료 시간: {next_candle_end.strftime('%Y-%m-%d %H:%M:%S')}\n"
                         f"현재 가격: ${entry_price:,.2f}\n"
-                        f"타임프레임: {timeframe_str}"
-                    )
-                    
-                    await self.bot.send_message(chat_id=self.chat_id, text=message)
-                    self.pre_candle_alerts[pre_alert_key_5min] = next_candle_end
-        except Exception as e:
-            raise Exception(str(e))
-
-    async def run(self):
-        symbols = ['BTC', 'ETH', 'XRP']
-        timeframes = [2, 4]
-        
-        print("암호화폐 패턴 감시를 시작합니다...")
-        await self.bot.send_message(
-            chat_id=self.chat_id, 
-            text="🤖 암호화폐 패턴 감시를 시작합니다!\n"
-            "모니터링 중: BTC, ETH, XRP\n"
-            "타임프레임: 2시간봉, 4시간봉\n"
-            "알림 유형:\n"
-            "1. 3,4,5연속 하락 패턴 (캔들 완료 확인 후 알림, 2시간 간격)\n"
-            "2. 2연속 하락 후 다음 캔들 종료 1시간 전 알림\n"
-            "3. 2연속 하락 후 다음 캔들 종료 5분 전 알림"
-        )
-        
-        while True:
-            try:
-                for symbol in symbols:
-                    for timeframe in timeframes:
-                        await self.check_pattern(symbol, timeframe)
-                await asyncio.sleep(30)  # 30초마다 체크
-            except Exception as e:
-                print(f"오류 발생: {str(e)}")
-                await asyncio.sleep(30)
-
-if __name__ == "__main__":
-    alert_bot = CryptoAlert()
-    asyncio.run(alert_bot.run())
