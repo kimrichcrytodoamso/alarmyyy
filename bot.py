@@ -122,3 +122,62 @@ class CryptoAlert:
                         f"현재 시간: {current_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
                         f"다음 캔들 종료 시간: {next_candle_end.strftime('%Y-%m-%d %H:%M:%S')}\n"
                         f"현재 가격: ${entry_price:,.2f}\n"
+                        f"타임프레임: {timeframe_str}"
+                    )
+                    
+                    await self.bot.send_message(chat_id=self.chat_id, text=message)
+                    self.pre_candle_alerts[pre_alert_key_5min] = next_candle_end
+        
+        except Exception as e:
+            error_msg = str(e)
+            # 요율 제한 에러 감지
+            if "rate limit" in error_msg.lower():
+                self.error_wait_time = max(15, self.error_wait_time * 2)  # 지수 백오프
+                await self.bot.send_message(
+                    chat_id=self.chat_id, 
+                    text=f"⚠️ API 요율 제한 감지! {self.error_wait_time}분 대기 후 재시도합니다."
+                )
+            raise Exception(error_msg)
+
+    async def run(self):
+        symbols = ['BTC', 'ETH', 'XRP']
+        timeframes = [2, 4]
+        check_interval = 5 * 60  # 기본 체크 간격 5분
+        
+        print("암호화폐 패턴 감시를 시작합니다...")
+        await self.bot.send_message(
+            chat_id=self.chat_id, 
+            text="🤖 암호화폐 패턴 감시를 시작합니다!\n"
+            "모니터링 중: BTC, ETH, XRP\n"
+            "타임프레임: 2시간봉, 4시간봉\n"
+            "알림 유형:\n"
+            "1. 3,4,5연속 하락 패턴 (캔들 완료 확인 후 알림, 2시간 간격)\n"
+            "2. 2연속 하락 후 다음 캔들 종료 1시간 전 알림\n"
+            "3. 2연속 하락 후 다음 캔들 종료 5분 전 알림\n"
+            "체크 간격: 5분 (요율 제한 감소)"
+        )
+        
+        while True:
+            try:
+                for symbol in symbols:
+                    for timeframe in timeframes:
+                        await self.check_pattern(symbol, timeframe)
+                        # 각 호출 사이에 짧은 대기시간 추가
+                        await asyncio.sleep(1)
+                
+                # 다음 체크까지 대기
+                wait_time = check_interval
+                if self.error_wait_time > 0:
+                    wait_time = self.error_wait_time * 60  # 분을 초로 변환
+                    print(f"요율 제한 에러로 인해 {self.error_wait_time}분 대기 중...")
+                
+                await asyncio.sleep(wait_time)
+            
+            except Exception as e:
+                print(f"오류 발생: {str(e)}")
+                # 일반 오류는 기본 대기 시간 사용
+                await asyncio.sleep(check_interval)
+
+if __name__ == "__main__":
+    alert_bot = CryptoAlert()
+    asyncio.run(alert_bot.run())
