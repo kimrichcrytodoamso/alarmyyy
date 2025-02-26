@@ -39,6 +39,7 @@ class CryptoAlert:
     def get_next_candle_end_time(self, current_candle_time, timeframe):
         # current_candle_time은 datetime 객체, timeframe은 정수
         next_candle_end = current_candle_time + timedelta(hours=timeframe*2)
+        print(f"다음 캔들 종료 시간 계산: 현재 캔들 시간 {current_candle_time}, 타임프레임 {timeframe}시간, 다음 캔들 종료 시간 {next_candle_end}")
         return next_candle_end
 
     def is_candle_complete(self, candle_time, timeframe):
@@ -51,6 +52,8 @@ class CryptoAlert:
             df = self.get_candlestick_data(symbol, timeframe)
             df.set_index('time', inplace=True)  # 여기서 인덱스를 설정
             timeframe_str = f"{timeframe}시간"
+            
+            print(f"{symbol} {timeframe_str}봉 패턴 확인 중... 현재 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             
             # 3,4,5연속 하락 패턴 체크
             for consecutive_count in [3, 4, 5]:
@@ -81,19 +84,24 @@ class CryptoAlert:
                         self.last_alert_times[alert_key] = current_time
                         # 성공적인 요청 후 대기 시간 초기화
                         self.error_wait_time = 0
+                        print(f"{symbol} {timeframe_str}봉 {consecutive_count}연속 하락 패턴 알림 전송 완료")
 
             # 2연속 하락 후 다음 캔들 종료 전 알림 체크
             last_two = df.tail(2)
             if all(last_two['close'] < last_two['open']):
+                print(f"{symbol} {timeframe_str}봉 2연속 하락 발견: {last_two.index[0].strftime('%Y-%m-%d %H:%M')}와 {last_two.index[1].strftime('%Y-%m-%d %H:%M')}")
+                
                 next_candle_end = self.get_next_candle_end_time(last_two.index[-1], timeframe)
                 current_time = datetime.now()
                 time_to_end = (next_candle_end - current_time).total_seconds() / 60  # 분 단위
+                
+                print(f"다음 캔들 종료까지 남은 시간: {time_to_end:.1f}분")
 
                 pre_alert_key_5min = f"pre_5min_{symbol}_{timeframe}"
                 pre_alert_key_1hour = f"pre_1hour_{symbol}_{timeframe}"
                 
-                # 종료 1시간 전 알림
-                if (59.5 <= time_to_end <= 60.5 and 
+                # 종료 1시간 전 알림 (범위 확장: 55분~65분)
+                if (55 <= time_to_end <= 65 and 
                     (pre_alert_key_1hour not in self.pre_candle_alerts or 
                      self.pre_candle_alerts[pre_alert_key_1hour] != next_candle_end)):
                     
@@ -109,9 +117,10 @@ class CryptoAlert:
                     
                     await self.bot.send_message(chat_id=self.chat_id, text=message)
                     self.pre_candle_alerts[pre_alert_key_1hour] = next_candle_end
+                    print(f"{symbol} {timeframe_str}봉 다음 캔들 종료 1시간 전 알림 전송 완료")
                 
-                # 종료 5분 전 알림
-                if (4.5 <= time_to_end <= 5.5 and 
+                # 종료 5분 전 알림 (범위 확장: 3분~7분)
+                if (3 <= time_to_end <= 7 and 
                     (pre_alert_key_5min not in self.pre_candle_alerts or 
                      self.pre_candle_alerts[pre_alert_key_5min] != next_candle_end)):
                     
@@ -127,6 +136,7 @@ class CryptoAlert:
                     
                     await self.bot.send_message(chat_id=self.chat_id, text=message)
                     self.pre_candle_alerts[pre_alert_key_5min] = next_candle_end
+                    print(f"{symbol} {timeframe_str}봉 다음 캔들 종료 5분 전 알림 전송 완료")
         
         except Exception as e:
             error_msg = str(e)
@@ -142,7 +152,7 @@ class CryptoAlert:
     async def run(self):
         symbols = ['BTC', 'ETH', 'XRP']
         timeframes = [2, 4]
-        check_interval = 5 * 60  # 기본 체크 간격 5분
+        check_interval = 2 * 60  # 체크 간격을 2분으로 변경
         
         print("암호화폐 패턴 감시를 시작합니다...")
         await self.bot.send_message(
@@ -152,9 +162,9 @@ class CryptoAlert:
             "타임프레임: 2시간봉, 4시간봉\n"
             "알림 유형:\n"
             "1. 3,4,5연속 하락 패턴 (캔들 완료 확인 후 알림, 2시간 간격)\n"
-            "2. 2연속 하락 후 다음 캔들 종료 1시간 전 알림\n"
-            "3. 2연속 하락 후 다음 캔들 종료 5분 전 알림\n"
-            "체크 간격: 5분 (요율 제한 감소)"
+            "2. 2연속 하락 후 다음 캔들 종료 1시간 전 알림 (55~65분 범위)\n"
+            "3. 2연속 하락 후 다음 캔들 종료 5분 전 알림 (3~7분 범위)\n"
+            "체크 간격: 2분 (알림 정확도 향상)"
         )
         
         while True:
@@ -171,6 +181,8 @@ class CryptoAlert:
                     wait_time = self.error_wait_time * 60  # 분을 초로 변환
                     print(f"요율 제한 에러로 인해 {self.error_wait_time}분 대기 중...")
                 
+                current_time = datetime.now()
+                print(f"다음 체크는 {(current_time + timedelta(seconds=wait_time)).strftime('%Y-%m-%d %H:%M:%S')}에 수행합니다.")
                 await asyncio.sleep(wait_time)
             
             except Exception as e:
