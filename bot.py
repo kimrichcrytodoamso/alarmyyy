@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from telegram import Bot
 import asyncio
 import os
+import pytz  # 타임존 처리를 위한 라이브러리 추가
 
 class CryptoAlert:
     def __init__(self):
@@ -31,20 +32,26 @@ class CryptoAlert:
         
         if data['Response'] == 'Success':
             df = pd.DataFrame(data['Data']['Data'])
-            df['time'] = pd.to_datetime(df['time'], unit='s')
+            # API 응답의 시간은 UTC로 가정하고 명시적으로 타임존 설정
+            df['time'] = pd.to_datetime(df['time'], unit='s').dt.tz_localize('UTC')
             return df
         else:
             raise Exception(f"API 요청 실패: {data['Message']}")
 
     def get_next_candle_end_time(self, current_candle_time, timeframe):
         # current_candle_time은 datetime 객체, timeframe은 정수
-        next_candle_end = current_candle_time + timedelta(hours=timeframe*2)
+        # 다음 캔들 시작 시간 = 현재 캔들 시간 + timeframe
+        next_candle_start = current_candle_time + timedelta(hours=timeframe)
+        # 다음 캔들 종료 시간 = 다음 캔들 시작 시간 + timeframe
+        next_candle_end = next_candle_start + timedelta(hours=timeframe)
         print(f"다음 캔들 종료 시간 계산: 현재 캔들 시간 {current_candle_time}, 타임프레임 {timeframe}시간, 다음 캔들 종료 시간 {next_candle_end}")
         return next_candle_end
 
     def is_candle_complete(self, candle_time, timeframe):
-        current_time = datetime.now()
+        # 현재 시간을 UTC로 가져오기
+        current_time = datetime.now(pytz.UTC)
         candle_end = candle_time + timedelta(hours=timeframe)
+        print(f"캔들 완료 확인: 현재 시간 {current_time}, 캔들 종료 시간 {candle_end}")
         return current_time >= candle_end
 
     async def check_pattern(self, symbol, timeframe):
@@ -53,7 +60,9 @@ class CryptoAlert:
             df.set_index('time', inplace=True)  # 여기서 인덱스를 설정
             timeframe_str = f"{timeframe}시간"
             
-            print(f"{symbol} {timeframe_str}봉 패턴 확인 중... 현재 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            # 현재 시간을 UTC로 가져오기
+            current_time = datetime.now(pytz.UTC)
+            print(f"{symbol} {timeframe_str}봉 패턴 확인 중... 현재 시간: {current_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
             
             # 3,4,5연속 하락 패턴 체크
             for consecutive_count in [3, 4, 5]:
@@ -63,7 +72,6 @@ class CryptoAlert:
                 if (all(last_candles['close'] < last_candles['open']) and 
                     self.is_candle_complete(last_candles.index[-1], timeframe)):
                     
-                    current_time = datetime.now()
                     if (alert_key not in self.last_alert_times or 
                         (current_time - self.last_alert_times[alert_key]).total_seconds() > 7200):
                         
@@ -73,8 +81,8 @@ class CryptoAlert:
                         
                         message = (
                             f"🚨 {symbol} {timeframe_str}봉 {consecutive_count}연속 하락 패턴 발견! 🚨\n"
-                            f"시간: {current_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                            f"마지막 캔들 종료 시간: {last_candles.index[-1] + timedelta(hours=timeframe)}\n"
+                            f"시간: {current_time.strftime('%Y-%m-%d %H:%M:%S %Z')}\n"
+                            f"마지막 캔들 종료 시간: {(last_candles.index[-1] + timedelta(hours=timeframe)).strftime('%Y-%m-%d %H:%M:%S %Z')}\n"
                             f"현재 가격: ${entry_price:,.2f}\n"
                             f"하락률: {drop_percent:.2f}%\n"
                             f"타임프레임: {timeframe_str}"
@@ -92,7 +100,6 @@ class CryptoAlert:
                 print(f"{symbol} {timeframe_str}봉 2연속 하락 발견: {last_two.index[0].strftime('%Y-%m-%d %H:%M')}와 {last_two.index[1].strftime('%Y-%m-%d %H:%M')}")
                 
                 next_candle_end = self.get_next_candle_end_time(last_two.index[-1], timeframe)
-                current_time = datetime.now()
                 time_to_end = (next_candle_end - current_time).total_seconds() / 60  # 분 단위
                 
                 print(f"다음 캔들 종료까지 남은 시간: {time_to_end:.1f}분")
@@ -109,8 +116,8 @@ class CryptoAlert:
                     message = (
                         f"⚠️ {symbol} {timeframe_str}봉 주의! ⚠️\n"
                         f"2연속 하락 발생, 다음 캔들 종료 1시간 전\n"
-                        f"현재 시간: {current_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                        f"다음 캔들 종료 시간: {next_candle_end.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                        f"현재 시간: {current_time.strftime('%Y-%m-%d %H:%M:%S %Z')}\n"
+                        f"다음 캔들 종료 시간: {next_candle_end.strftime('%Y-%m-%d %H:%M:%S %Z')}\n"
                         f"현재 가격: ${entry_price:,.2f}\n"
                         f"타임프레임: {timeframe_str}"
                     )
@@ -128,8 +135,8 @@ class CryptoAlert:
                     message = (
                         f"⚠️ {symbol} {timeframe_str}봉 주의! ⚠️\n"
                         f"2연속 하락 발생, 다음 캔들 종료 5분 전\n"
-                        f"현재 시간: {current_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                        f"다음 캔들 종료 시간: {next_candle_end.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                        f"현재 시간: {current_time.strftime('%Y-%m-%d %H:%M:%S %Z')}\n"
+                        f"다음 캔들 종료 시간: {next_candle_end.strftime('%Y-%m-%d %H:%M:%S %Z')}\n"
                         f"현재 가격: ${entry_price:,.2f}\n"
                         f"타임프레임: {timeframe_str}"
                     )
@@ -164,7 +171,8 @@ class CryptoAlert:
             "1. 3,4,5연속 하락 패턴 (캔들 완료 확인 후 알림, 2시간 간격)\n"
             "2. 2연속 하락 후 다음 캔들 종료 1시간 전 알림 (55~65분 범위)\n"
             "3. 2연속 하락 후 다음 캔들 종료 5분 전 알림 (3~7분 범위)\n"
-            "체크 간격: 2분 (알림 정확도 향상)"
+            "체크 간격: 2분 (알림 정확도 향상)\n"
+            f"현재 시간: {datetime.now(pytz.UTC).strftime('%Y-%m-%d %H:%M:%S %Z')}"
         )
         
         while True:
@@ -181,8 +189,8 @@ class CryptoAlert:
                     wait_time = self.error_wait_time * 60  # 분을 초로 변환
                     print(f"요율 제한 에러로 인해 {self.error_wait_time}분 대기 중...")
                 
-                current_time = datetime.now()
-                print(f"다음 체크는 {(current_time + timedelta(seconds=wait_time)).strftime('%Y-%m-%d %H:%M:%S')}에 수행합니다.")
+                current_time = datetime.now(pytz.UTC)
+                print(f"다음 체크는 {(current_time + timedelta(seconds=wait_time)).strftime('%Y-%m-%d %H:%M:%S %Z')}에 수행합니다.")
                 await asyncio.sleep(wait_time)
             
             except Exception as e:
