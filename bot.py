@@ -41,59 +41,90 @@ class CryptoAlert:
         
         logger.info("CryptoAlert 초기화 완료")
         
-    async def fetch_candlestick_data(self, symbol, timeframe_hours):
-        """
-        CryptoCompare API를 사용하여 바이낸스의 암호화폐 캔들 데이터를 가져옵니다.
+async def fetch_candlestick_data(self, symbol, timeframe_hours):
+    """
+    CryptoCompare API를 사용하여 바이낸스의 암호화폐 캔들 데이터를 가져옵니다.
+    
+    Args:
+        symbol (str): 암호화폐 심볼 (BTC, ETH 등)
+        timeframe_hours (int): 타임프레임 (시간 단위)
         
-        Args:
-            symbol (str): 암호화폐 심볼 (BTC, ETH 등)
-            timeframe_hours (int): 타임프레임 (시간 단위)
+    Returns:
+        DataFrame: 캔들 데이터가 포함된 데이터프레임
+    """
+    url = "https://min-api.cryptocompare.com/data/v2/histohour"
+    params = {
+        "fsym": symbol,
+        "tsym": "USDT",  # USD 대신 USDT 사용
+        "limit": 10,  # 패턴 감지를 위해 충분한 캔들 데이터
+        "api_key": self.crypto_api_key,
+        "aggregate": timeframe_hours,
+        "e": "Binance"  # 바이낸스 거래소 데이터 지정
+    }
+    
+    logger.info(f"{symbol} {timeframe_hours}시간봉 데이터 요청 중 (바이낸스/CryptoCompare USDT 페어)...")
+    
+    try:
+        response = requests.get(url, params=params, timeout=30)
+        data = response.json()
+        
+        if data['Response'] == 'Success':
+            # 데이터 변환 및 타임존 설정
+            df = pd.DataFrame(data['Data']['Data'])
+            df['time'] = pd.to_datetime(df['time'], unit='s').dt.tz_localize('UTC')
             
-        Returns:
-            DataFrame: 캔들 데이터가 포함된 데이터프레임
-        """
-        url = "https://min-api.cryptocompare.com/data/v2/histohour"
-        params = {
-            "fsym": symbol,
-            "tsym": "USD",
-            "limit": 10,  # 패턴 감지를 위해 충분한 캔들 데이터
-            "api_key": self.crypto_api_key,
-            "aggregate": timeframe_hours,
-            "e": "Binance"  # 바이낸스 거래소 데이터 지정
-        }
-        
-        logger.info(f"{symbol} {timeframe_hours}시간봉 데이터 요청 중 (바이낸스/CryptoCompare)...")
-        
-        try:
-            response = requests.get(url, params=params, timeout=30)
-            data = response.json()
+            # 필요한 컬럼만 선택 및 정렬
+            df = df[['time', 'open', 'high', 'low', 'close', 'volumefrom', 'volumeto']]
+            df = df.rename(columns={'volumefrom': 'volume'})
+            df = df.sort_values('time')
             
-            if data['Response'] == 'Success':
-                # 데이터 변환 및 타임존 설정
-                df = pd.DataFrame(data['Data']['Data'])
-                df['time'] = pd.to_datetime(df['time'], unit='s').dt.tz_localize('UTC')
-                
-                # 필요한 컬럼만 선택 및 정렬
-                df = df[['time', 'open', 'high', 'low', 'close', 'volumefrom', 'volumeto']]
-                df = df.rename(columns={'volumefrom': 'volume'})
-                df = df.sort_values('time')
-                
-                # 하락 캔들 여부 표시
-                df['is_bearish'] = df['close'] < df['open']
-                
-                logger.info(f"{symbol} {timeframe_hours}시간봉 데이터 {len(df)}개 가져옴 (바이낸스/CryptoCompare)")
-                if not df.empty:
-                    logger.info(f"가장 최근 캔들: {df['time'].iloc[-1]}")
-                
-                return df
-            else:
-                error_msg = f"API 요청 실패: {data.get('Message', '알 수 없는 오류')}"
-                logger.error(error_msg)
-                raise Exception(error_msg)
-                
-        except Exception as e:
-            logger.error(f"데이터 요청 중 오류 발생: {str(e)}")
-            raise
+            # 하락 캔들 여부 표시
+            df['is_bearish'] = df['close'] < df['open']
+            
+            logger.info(f"{symbol} {timeframe_hours}시간봉 데이터 {len(df)}개 가져옴 (바이낸스/CryptoCompare)")
+            if not df.empty:
+                logger.info(f"가장 최근 캔들: {df['time'].iloc[-1]}")
+            
+            return df
+        else:
+            error_msg = f"API 요청 실패: {data.get('Message', '알 수 없는 오류')}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
+            
+    except Exception as e:
+        logger.error(f"데이터 요청 중 오류 발생: {str(e)}")
+        raise
+        
+async def get_current_price(self, symbol):
+    """
+    CryptoCompare API를 통해 바이낸스의 현재 가격을 가져옵니다.
+    
+    Args:
+        symbol (str): 암호화폐 심볼 (BTC, ETH 등)
+        
+    Returns:
+        float: 현재 가격
+    """
+    url = "https://min-api.cryptocompare.com/data/price"
+    params = {
+        "fsym": symbol,
+        "tsyms": "USDT",  # USD 대신 USDT 사용
+        "api_key": self.crypto_api_key,
+        "e": "Binance"  # 바이낸스 거래소 데이터 지정
+    }
+    
+    try:
+        response = requests.get(url, params=params, timeout=30)
+        data = response.json()
+        
+        if "USDT" in data:
+            return float(data["USDT"])
+        else:
+            logger.error(f"현재 가격 요청 실패: {data}")
+            raise Exception("현재 가격을 가져올 수 없습니다.")
+    except Exception as e:
+        logger.error(f"현재 가격 요청 중 오류 발생: {str(e)}")
+        raise
             
     async def get_current_price(self, symbol):
         """
