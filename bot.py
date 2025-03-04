@@ -56,7 +56,7 @@ class CryptoAlert:
         params = {
             "fsym": symbol,
             "tsym": "USDT",  # USD 대신 USDT 사용
-            "limit": 10,  # 패턴 감지를 위해 충분한 캔들 데이터
+            "limit": 20,  # 더 많은 데이터 가져오기 (이전 캔들 확실히 포함)
             "api_key": self.crypto_api_key,
             "aggregate": timeframe_hours,
             "e": "Binance"  # 바이낸스 거래소 데이터 지정
@@ -83,7 +83,7 @@ class CryptoAlert:
                 
                 logger.info(f"{symbol} {timeframe_hours}시간봉 데이터 {len(df)}개 가져옴 (바이낸스/CryptoCompare)")
                 if not df.empty:
-                    logger.info(f"가장 최근 캔들: {df['time'].iloc[-1]}")
+                    logger.info(f"데이터 범위: {df['time'].iloc[0]} ~ {df['time'].iloc[-1]}")
                 
                 return df
             else:
@@ -183,6 +183,40 @@ class CryptoAlert:
         
         return current_candle_start, current_candle_end
 
+    def find_previous_candle(self, df, current_candle_start, timeframe_hours):
+        """
+        현재 캔들 이전의 완료된 캔들을 찾습니다.
+        
+        Args:
+            df (DataFrame): 캔들 데이터
+            current_candle_start (datetime): 현재 캔들 시작 시간
+            timeframe_hours (int): 타임프레임 (시간 단위)
+            
+        Returns:
+            tuple: (이전 캔들 시작 시간, 이전 캔들 종료 시간, 이전 캔들 종가)
+        """
+        # 이전 캔들 시간 계산
+        previous_candle_start = current_candle_start - timedelta(hours=timeframe_hours)
+        previous_candle_end = current_candle_start
+        
+        # 이전 캔들 데이터 찾기
+        previous_candle = df[(df['time'] >= previous_candle_start) & (df['time'] < current_candle_start)]
+        
+        if not previous_candle.empty:
+            previous_candle_close = previous_candle['close'].iloc[-1]
+            return previous_candle_start, previous_candle_end, previous_candle_close
+        else:
+            logger.warning(f"이전 캔들 데이터를 찾을 수 없습니다. 시간 범위: {previous_candle_start} ~ {current_candle_start}")
+            
+            # 대안: 가장 최근 캔들 사용
+            if not df.empty:
+                last_candle = df.iloc[-1]
+                last_candle_time = last_candle['time']
+                last_candle_close = last_candle['close']
+                return last_candle_time, last_candle_time + timedelta(hours=timeframe_hours), last_candle_close
+            else:
+                return None, None, None
+
     async def generate_coin_info(self, symbol, timeframe_hours, df, current_price):
         """
         코인별 정보를 생성합니다.
@@ -196,12 +230,24 @@ class CryptoAlert:
         Returns:
             dict: 코인 정보
         """
-        # 마지막 캔들의 종가
-        last_candle_close = df['close'].iloc[-1]
+        # 현재 캔들 시간 계산
+        current_candle_start, current_candle_end = self.calculate_current_candle_times(timeframe_hours)
         
-        # 이전 캔들 대비 변화
-        price_change = current_price - last_candle_close
-        price_change_percent = (price_change / last_candle_close) * 100
+        # 이전 캔들 찾기
+        prev_candle_start, prev_candle_end, prev_candle_close = self.find_previous_candle(
+            df, current_candle_start, timeframe_hours
+        )
+        
+        if prev_candle_close is None:
+            # 이전 캔들을 찾을 수 없는 경우
+            price_change = 0
+            price_change_percent = 0
+            prev_candle_time_str = "이전 캔들 정보 없음"
+        else:
+            # 이전 캔들 대비 변화 계산
+            price_change = current_price - prev_candle_close
+            price_change_percent = (price_change / prev_candle_close) * 100
+            prev_candle_time_str = f"{prev_candle_start.strftime('%H:%M')}-{prev_candle_end.strftime('%H:%M')}"
         
         # 연속 하락 패턴 확인
         bearish_3, start_price_3, end_price_3, drop_percent_3 = self.check_consecutive_bearish(df, 3)
@@ -226,7 +272,8 @@ class CryptoAlert:
             "symbol": symbol,
             "timeframe_hours": timeframe_hours,
             "current_price": current_price,
-            "last_candle_close": last_candle_close,
+            "prev_candle_close": prev_candle_close,
+            "prev_candle_time_str": prev_candle_time_str,
             "price_change": price_change,
             "price_change_percent": price_change_percent,
             "patterns": patterns,
@@ -256,21 +303,27 @@ class CryptoAlert:
         for info in coins_info:
             symbol = info["symbol"]
             current_price = info["current_price"]
-            last_close = info["last_candle_close"]
-            change_pct = info["price_change_percent"]
-            change_val = info["price_change"]
-            patterns = info["patterns"]
-            pattern_details = info["pattern_details"]
+            
+            # 코인별로 적절한 소수점 자릿수 설정
+            if symbol == 'BTC':
+                price_format = f"${current_price:,.2f}"
+                change_format = f"{info['price_change_percent']:.2f}% ({info['price_change']:+,.2f}$)"
+            elif symbol == 'ETH':
+                price_format = f"${current_price:,.2f}"
+                change_format = f"{info['price_change_percent']:.2f}% ({info['price_change']:+,.2f}$)"
+            else:  # XRP 등 낮은 가격대 코인
+                price_format = f"${current_price:,.4f}"
+                change_format = f"{info['price_change_percent']:.4f}% ({info['price_change']:+,.4f}$)"
             
             coin_part = [
                 f"📊 {symbol}:",
-                f"현재 가격: ${current_price:,.2f}",
-                f"전 캔들 대비: {change_pct:.2f}% ({change_val:+,.2f}$)"
+                f"현재 가격: {price_format}",
+                f"전 캔들({info['prev_candle_time_str']}) 대비: {change_format}"
             ]
             
-            if pattern_details:
+            if info["pattern_details"]:
                 coin_part.append("감지된 패턴:")
-                coin_part.extend([f"- {detail}" for detail in pattern_details])
+                coin_part.extend([f"- {detail}" for detail in info["pattern_details"]])
             else:
                 coin_part.append("감지된 패턴: 없음")
             
@@ -420,7 +473,7 @@ class CryptoAlert:
                 "알림 기능:\n"
                 "- 캔들 종료 5분 전 통합 알림\n"
                 "- 연속 하락 패턴 감지 (3, 4, 5연속) 및 총 하락률 계산\n"
-                "- 전 캔들 대비 가격 변화 정보\n"
+                "- 전 캔들 대비 가격 변화 정보 (정확한 시간 표시)\n"
                 "체크 간격: 5분\n"
                 "데이터 소스: CryptoCompare (바이낸스 거래소 USDT 페어)\n"
                 f"현재 시간: {datetime.now(pytz.UTC).strftime('%Y-%m-%d %H:%M:%S %Z')}"
