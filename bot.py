@@ -311,7 +311,7 @@ class CryptoAlert:
             elif symbol == 'ETH':
                 price_format = f"${current_price:,.2f}"
                 change_format = f"{info['price_change_percent']:.2f}% ({info['price_change']:+,.2f}$)"
-            else:  # XRP 등 낮은 가격대 코인
+            else:  # XRP, SOL 등 낮은 가격대 코인
                 price_format = f"${current_price:,.4f}"
                 change_format = f"{info['price_change_percent']:.4f}% ({info['price_change']:+,.4f}$)"
             
@@ -458,7 +458,7 @@ class CryptoAlert:
         메인 실행 루프
         """
         # 감시할 암호화폐 및 타임프레임
-        symbols = ['BTC', 'ETH', 'XRP']
+        symbols = ['BTC', 'ETH', 'XRP', 'SOL']  # SOL 추가
         timeframes = [2, 4]  # 시간 단위
         
         logger.info("암호화폐 캔들 종료 알림 시작")
@@ -468,7 +468,7 @@ class CryptoAlert:
             await self.bot.send_message(
                 chat_id=self.chat_id, 
                 text="🤖 암호화폐 캔들 종료 알림 봇이 시작되었습니다!\n"
-                "모니터링 중: BTC, ETH, XRP\n"
+                "모니터링 중: BTC, ETH, XRP, SOL\n"  # SOL 추가
                 "타임프레임: 2시간봉, 4시간봉\n"
                 "알림 기능:\n"
                 "- 캔들 종료 5분 전 통합 알림\n"
