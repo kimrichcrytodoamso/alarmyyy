@@ -253,12 +253,21 @@ class CryptoAlert:
         bearish_3, start_price_3, end_price_3, drop_percent_3 = self.check_consecutive_bearish(df, 3)
         bearish_4, start_price_4, end_price_4, drop_percent_4 = self.check_consecutive_bearish(df, 4)
         bearish_5, start_price_5, end_price_5, drop_percent_5 = self.check_consecutive_bearish(df, 5)
-        
+        bearish_6, start_price_6, end_price_6, drop_percent_6 = self.check_consecutive_bearish(df, 6)
+        bearish_7, start_price_7, end_price_7, drop_percent_7 = self.check_consecutive_bearish(df, 7)
+
         # 패턴 정보
         patterns = []
         pattern_details = []
-        
-        if bearish_5:
+
+        # 가장 긴 연속 하락 패턴만 표시 (중복 방지)
+        if bearish_7:
+            patterns.append("7연속 하락")
+            pattern_details.append(f"7연속 하락: {drop_percent_7:.2f}% (${start_price_7:,.2f} → ${end_price_7:,.2f})")
+        elif bearish_6:
+            patterns.append("6연속 하락")
+            pattern_details.append(f"6연속 하락: {drop_percent_6:.2f}% (${start_price_6:,.2f} → ${end_price_6:,.2f})")
+        elif bearish_5:
             patterns.append("5연속 하락")
             pattern_details.append(f"5연속 하락: {drop_percent_5:.2f}% (${start_price_5:,.2f} → ${end_price_5:,.2f})")
         elif bearish_4:
