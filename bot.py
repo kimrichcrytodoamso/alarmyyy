@@ -243,11 +243,16 @@ class CryptoAlert:
             price_change = 0
             price_change_percent = 0
             prev_candle_time_str = "이전 캔들 정보 없음"
+
         else:
             # 이전 캔들 대비 변화 계산
             price_change = current_price - prev_candle_close
             price_change_percent = (price_change / prev_candle_close) * 100
-            prev_candle_time_str = f"{prev_candle_start.strftime('%H:%M')}-{prev_candle_end.strftime('%H:%M')}"
+    
+            # UTC+1 시간으로 변환
+            prev_start_utc1 = prev_candle_start + timedelta(hours=1)
+            prev_end_utc1 = prev_candle_end + timedelta(hours=1)
+            prev_candle_time_str = f"{prev_start_utc1.strftime('%H:%M')}-{prev_end_utc1.strftime('%H:%M')} (UTC+1)"
         
         # 연속 하락 패턴 확인
         bearish_3, start_price_3, end_price_3, drop_percent_3 = self.check_consecutive_bearish(df, 3)
@@ -255,12 +260,20 @@ class CryptoAlert:
         bearish_5, start_price_5, end_price_5, drop_percent_5 = self.check_consecutive_bearish(df, 5)
         bearish_6, start_price_6, end_price_6, drop_percent_6 = self.check_consecutive_bearish(df, 6)
         bearish_7, start_price_7, end_price_7, drop_percent_7 = self.check_consecutive_bearish(df, 7)
+        bearish_8, start_price_8, end_price_8, drop_percent_8 = self.check_consecutive_bearish(df, 8)
+        bearish_9, start_price_9, end_price_9, drop_percent_9 = self.check_consecutive_bearish(df, 9)
 
         # 패턴 정보
         patterns = []
         pattern_details = []
 
         # 가장 긴 연속 하락 패턴만 표시 (중복 방지)
+        if bearish_9:
+            patterns.append("9연속 하락")
+            pattern_details.append(f"9연속 하락: {drop_percent_9:.2f}% (${start_price_9:,.2f} → ${end_price_9:,.2f})")
+        if bearish_8:
+            patterns.append("8연속 하락")
+            pattern_details.append(f"8연속 하락: {drop_percent_8:.2f}% (${start_price_8:,.2f} → ${end_price_8:,.2f})")
         if bearish_7:
             patterns.append("7연속 하락")
             pattern_details.append(f"7연속 하락: {drop_percent_7:.2f}% (${start_price_7:,.2f} → ${end_price_7:,.2f})")
@@ -301,9 +314,10 @@ class CryptoAlert:
         current_time = datetime.now(pytz.UTC)
         
         # 알림 메시지 작성
+        current_time_utc1 = current_time + timedelta(hours=1)  # UTC+1로 변환
         message_parts = [
             f"🔔 {timeframe_str}봉 종료 5분 전 알림 🔔",
-            f"시간: {current_time.strftime('%Y-%m-%d %H:%M:%S %Z')}",
+            f"시간: {current_time_utc1.strftime('%Y-%m-%d %H:%M:%S')} (UTC+1)",
             f"타임프레임: {timeframe_str}",
             ""
         ]
