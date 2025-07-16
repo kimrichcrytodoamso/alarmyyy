@@ -53,7 +53,6 @@ class CryptoAlert:
         Returns:
             DataFrame: 캔들 데이터가 포함된 데이터프레임
         """
-        # <--- MODIFIED SECTION START --->
         if timeframe_hours == 24:
             url = "https://min-api.cryptocompare.com/data/v2/histoday"
             params = {
@@ -77,7 +76,6 @@ class CryptoAlert:
             timeframe_str = f"{timeframe_hours}시간봉"
             
         logger.info(f"{symbol} {timeframe_str} 데이터 요청 중 (바이낸스/CryptoCompare USDT 페어)...")
-        # <--- MODIFIED SECTION END --->
         
         try:
             response = requests.get(url, params=params, timeout=30)
@@ -93,7 +91,6 @@ class CryptoAlert:
                 
                 df['is_bearish'] = df['close'] < df['open']
                 
-                # <--- MODIFIED LOG MESSAGE --->
                 logger.info(f"{symbol} {timeframe_str} 데이터 {len(df)}개 가져옴 (바이낸스/CryptoCompare)")
                 if not df.empty:
                     logger.info(f"데이터 범위: {df['time'].iloc[0]} ~ {df['time'].iloc[-1]}")
@@ -262,7 +259,6 @@ class CryptoAlert:
         patterns = []
         pattern_details = []
 
-        # <--- BUG FIX: Changed to elif to report only the longest pattern --->
         if bearish_9:
             patterns.append("9연속 하락")
             pattern_details.append(f"9연속 하락: {drop_percent_9:.2f}% (${start_price_9:,.2f} → ${end_price_9:,.2f})")
@@ -305,7 +301,6 @@ class CryptoAlert:
             timeframe_hours (int): 타임프레임 (시간 단위)
             coins_info (list): 코인별 정보 목록
         """
-        # <--- MODIFIED: Handle daily timeframe string --->
         if timeframe_hours == 24:
             timeframe_str = "일봉"
         else:
@@ -353,7 +348,6 @@ class CryptoAlert:
         message = "\n".join(message_parts)
         
         try:
-            # <--- MODIFIED LOG MESSAGE --->
             logger.info(f"{timeframe_str} 통합 알림 전송 중...")
             await self.bot.send_message(chat_id=self.chat_id, text=message)
             logger.info(f"{timeframe_str} 통합 알림 전송 완료")
@@ -364,7 +358,6 @@ class CryptoAlert:
         """
         특정 타임프레임에 대한 모든 코인의 알림을 확인합니다.
         """
-        # <--- ADDED: Handle daily timeframe string --->
         if timeframe_hours == 24:
             timeframe_str = "일봉"
         else:
@@ -377,7 +370,6 @@ class CryptoAlert:
             
             minutes_to_end = (current_candle_end - current_time).total_seconds() / 60
             
-            # <--- MODIFIED LOG MESSAGE --->
             logger.info(f"{timeframe_str} 현재 시간: {current_time}, 캔들 종료 시간: {current_candle_end}")
             logger.info(f"캔들 종료까지 남은 시간: {minutes_to_end:.1f} 분")
             
@@ -385,7 +377,6 @@ class CryptoAlert:
                 alert_key = f"timeframe_{timeframe_hours}_{current_candle_end.strftime('%Y%m%d%H%M')}"
                 
                 if alert_key not in self.candle_end_alerts:
-                    # <--- MODIFIED LOG MESSAGE --->
                     logger.info(f"{timeframe_str} 종료 {minutes_to_end:.1f}분 전")
                     
                     coins_info = []
@@ -408,7 +399,6 @@ class CryptoAlert:
                         self._clean_old_alerts()
         
         except Exception as e:
-            # <--- MODIFIED LOG MESSAGE --->
             logger.error(f"{timeframe_str} 알림 확인 중 오류 발생: {str(e)}")
             
             if "rate limit" in str(e).lower():
@@ -465,18 +455,18 @@ class CryptoAlert:
         메인 실행 루프
         """
         symbols = ['BTC', 'ETH', 'XRP', 'SOL']
-        # <--- CHANGED: Added 6-hour and 24-hour (daily) timeframes --->
-        timeframes = [2, 4, 6, 24]
+        # <--- CHANGED: 12시간봉 추가 --->
+        timeframes = [2, 4, 6, 12, 24] 
         
         logger.info("암호화폐 캔들 종료 알림 시작")
         
         try:
-            # <--- CHANGED: Updated startup message --->
+            # <--- CHANGED: 시작 메시지에 12시간봉 추가 --->
             await self.bot.send_message(
                 chat_id=self.chat_id, 
                 text="🤖 암호화폐 캔들 종료 알림 봇이 시작되었습니다!\n"
                      "모니터링 중: BTC, ETH, XRP, SOL\n"
-                     "타임프레임: 2시간봉, 4시간봉, 6시간봉, 일봉\n"
+                     "타임프레임: 2시간봉, 4시간봉, 6시간봉, 12시간봉, 일봉\n"
                      "알림 기능:\n"
                      "- 캔들 종료 5분 전 통합 알림\n"
                      "- 연속 하락 패턴 감지 (3-9연속) 및 총 하락률 계산\n"
