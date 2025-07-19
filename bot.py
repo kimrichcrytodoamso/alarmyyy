@@ -455,18 +455,18 @@ class CryptoAlert:
         메인 실행 루프
         """
         symbols = ['BTC', 'ETH', 'XRP', 'SOL']
-        # <--- CHANGED: 12시간봉 추가 --->
-        timeframes = [2, 4, 6, 12, 24] 
+        # <--- CHANGED: 8시간봉 추가 --->
+        timeframes = [2, 4, 6, 8, 12, 24] 
         
         logger.info("암호화폐 캔들 종료 알림 시작")
         
         try:
-            # <--- CHANGED: 시작 메시지에 12시간봉 추가 --->
+            # <--- CHANGED: 시작 메시지에 8시간봉 추가 --->
             await self.bot.send_message(
                 chat_id=self.chat_id, 
                 text="🤖 암호화폐 캔들 종료 알림 봇이 시작되었습니다!\n"
                      "모니터링 중: BTC, ETH, XRP, SOL\n"
-                     "타임프레임: 2시간봉, 4시간봉, 6시간봉, 12시간봉, 일봉\n"
+                     "타임프레임: 2시간봉, 4시간봉, 6시간봉, 8시간봉, 12시간봉, 일봉\n"
                      "알림 기능:\n"
                      "- 캔들 종료 5분 전 통합 알림\n"
                      "- 연속 하락 패턴 감지 (3-9연속) 및 총 하락률 계산\n"
@@ -480,9 +480,10 @@ class CryptoAlert:
         
         while True:
             try:
-                for timeframe in timeframes:
+                # 각 타임프레임 리스트를 정렬하여 순서대로 확인
+                for timeframe in sorted(timeframes):
                     await self.check_timeframe_alerts(timeframe, symbols)
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(1) # API 호출 간 짧은 대기
                 
                 next_check = self._calculate_next_check_time()
                 current_time = datetime.now(pytz.UTC)
